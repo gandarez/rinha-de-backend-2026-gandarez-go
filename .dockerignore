@@ -3,5 +3,5 @@
 .github
 *.md
 resources/
-nginx/
+haproxy/
 docker-compose*.yml

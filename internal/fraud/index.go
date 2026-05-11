@@ -39,6 +39,11 @@ func (idx *Index) Add(v [VectorDim]float32, fraud bool) {
 
 func (idx *Index) Len() int { return idx.n }
 
+// RawData exposes the internal flat slices for offline processing (e.g., k-means builder).
+func (idx *Index) RawData() (vectors []float32, labels []uint8) {
+	return idx.vectors, idx.labels
+}
+
 // topKResult tracks the K closest candidates seen so far.
 type topKResult struct {
 	dists  [TopK]float32
@@ -70,6 +75,12 @@ func (r *topKResult) insert(d float32, label uint8) {
 			}
 		}
 	}
+}
+
+// SqDist14 computes the squared Euclidean distance between q and r (14-dim float32).
+// BCE hint via _ = r[13]; fully unrolled for auto-vectorization.
+func SqDist14(q *[VectorDim]float32, r []float32) float32 {
+	return sqDist14(q, r)
 }
 
 // sqDist14 computes the squared Euclidean distance between query q and reference r.
@@ -104,16 +115,17 @@ func (idx *Index) scanChunk(start, end int, q *[VectorDim]float32) topKResult {
 	return res
 }
 
-// Score runs a sharded parallel KNN search and returns the fraud fraction
-// among the TopK nearest neighbors (0.0–1.0).
-func (idx *Index) Score(query [VectorDim]float32) float32 {
+// Score runs a KNN search and returns the count of fraud neighbors (0..TopK).
+func (idx *Index) Score(query [VectorDim]float32) int {
 	if idx.n == 0 {
 		return 0
 	}
 
 	workers := runtime.GOMAXPROCS(0)
-	if workers < 1 {
-		workers = 1
+	if workers <= 1 {
+		// Fast path: no goroutine overhead under GOMAXPROCS=1.
+		res := idx.scanChunk(0, idx.n, &query)
+		return countFrauds(&res)
 	}
 	if workers > idx.n {
 		workers = idx.n
@@ -137,22 +149,21 @@ func (idx *Index) Score(query [VectorDim]float32) float32 {
 	}
 	wg.Wait()
 
-	// Merge each worker's top-K into a global top-K.
 	var global topKResult
 	for _, r := range results {
 		for j := 0; j < r.size; j++ {
 			global.insert(r.dists[j], r.labels[j])
 		}
 	}
+	return countFrauds(&global)
+}
 
-	if global.size == 0 {
-		return 0
-	}
+func countFrauds(r *topKResult) int {
 	var frauds int
-	for j := 0; j < global.size; j++ {
-		if global.labels[j] == 1 {
+	for j := 0; j < r.size; j++ {
+		if r.labels[j] == 1 {
 			frauds++
 		}
 	}
-	return float32(frauds) / float32(global.size)
+	return frauds
 }

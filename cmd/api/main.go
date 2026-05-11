@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"syscall"
 	"time"
 
@@ -20,14 +21,18 @@ const (
 	defaultPort        = "9999"
 	defaultResourceDir = "./resources"
 
-	readHeaderTimeout = 5 * time.Second
-	readTimeout       = 10 * time.Second
-	writeTimeout      = 10 * time.Second
-	idleTimeout       = 60 * time.Second
-	shutdownTimeout   = 10 * time.Second
+	readHeaderTimeout = 2 * time.Second
+	readTimeout       = 2 * time.Second
+	writeTimeout      = 2 * time.Second
+	idleTimeout       = 5 * time.Second
+	shutdownTimeout   = 5 * time.Second
 )
 
 func main() {
+	// With near-zero per-request allocation (sync.Pool), a higher GC target
+	// reduces GC frequency without risking OOM under the 140MiB container limit.
+	debug.SetGCPercent(500)
+
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
@@ -48,15 +53,26 @@ func main() {
 		os.Exit(1)
 	}
 
-	refPath := filepath.Join(resourcesDir, "references.json.gz")
-	logger.Info("loading references", "path", refPath)
 	t0 := time.Now()
-	index, err := fraud.LoadReferences(refPath)
-	if err != nil {
-		logger.Error("load references", "err", err)
-		os.Exit(1)
+	var index fraud.Indexer
+
+	ivfPath := filepath.Join(resourcesDir, "index.bin.gz")
+	if ivf, err := fraud.LoadIVF(ivfPath); err == nil {
+		logger.Info("ivf index loaded", "path", ivfPath, "elapsed", time.Since(t0))
+		index = ivf
+	} else {
+		// Fallback to brute-force KNN when no pre-built IVF index exists.
+		logger.Info("ivf index not found, falling back to brute-force KNN", "reason", err)
+		t0 = time.Now()
+		refPath := filepath.Join(resourcesDir, "references.json.gz")
+		bf, err := fraud.LoadReferences(refPath)
+		if err != nil {
+			logger.Error("load references", "err", err)
+			os.Exit(1)
+		}
+		logger.Info("references loaded", "count", bf.Len(), "elapsed", time.Since(t0))
+		index = bf
 	}
-	logger.Info("references loaded", "count", index.Len(), "elapsed", time.Since(t0))
 
 	scorer := fraud.New(fraud.NewVectorizer(constants, mccRisk), index)
 	fraudHandler := handler.New(scorer)

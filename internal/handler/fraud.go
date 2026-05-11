@@ -1,11 +1,10 @@
 package handler
 
 import (
-	"encoding/json"
+	"io"
 	"net/http"
 
 	"github.com/gandarez/rinha-de-backend-2026-gandarez-go/internal/fraud"
-	"github.com/gandarez/rinha-de-backend-2026-gandarez-go/internal/model"
 )
 
 type FraudHandler struct {
@@ -19,17 +18,25 @@ func New(s *fraud.Scorer) *FraudHandler {
 func (h *FraudHandler) Score(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
-	var req model.Request
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	ws := wsPool.Get().(*workspace)
+	defer wsPool.Put(ws)
+
+	// Read body into stack-like buffer from pool (no heap allocation).
+	limited := io.LimitReader(r.Body, int64(len(ws.body)))
+	n, err := io.ReadFull(limited, ws.body[:])
+	if err != nil && err != io.ErrUnexpectedEOF {
+		http.Error(w, "read body", http.StatusBadRequest)
+		return
+	}
+
+	if err := parseBody(ws.body[:n], &ws.raw); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	resp := h.scorer.Score(&req)
+	fraudCount := h.scorer.ScoreRaw(&ws.raw)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		return
-	}
+	w.Write(responses[fraudCount]) //nolint:errcheck
 }

@@ -15,5 +15,10 @@ curl -fsSL "$REPO_URL/mcc_risk.json" -o "$DEST/mcc_risk.json"
 echo "Downloading references.json.gz (~50 MB)..."
 curl -fsSL "$REPO_URL/references.json.gz" -o "$DEST/references.json.gz"
 
+echo "Building IVF index (k-means k=1024, this may take 1-3 minutes)..."
+RESOURCES_DIR="$DEST" go run ./cmd/build-index \
+  --in "$DEST/references.json.gz" \
+  --out "$DEST/index.bin.gz"
+
 echo "Done. Files in $DEST:"
 ls -lh "$DEST/"

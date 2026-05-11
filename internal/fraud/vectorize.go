@@ -1,6 +1,8 @@
 package fraud
 
-import "github.com/gandarez/rinha-de-backend-2026-gandarez-go/internal/model"
+import (
+	"github.com/gandarez/rinha-de-backend-2026-gandarez-go/internal/model"
+)
 
 // Constants mirrors normalization.json — denominators used in the 14-dim vectorization.
 type Constants struct {
@@ -105,6 +107,71 @@ func (v *Vectorizer) Vectorize(req *model.Request) [VectorDim]float32 {
 
 	// 13: merchant_avg_amount
 	vec[13] = clamp(float32(req.Merchant.AvgAmount) / v.c.MaxMerchantAvgAmount)
+
+	return vec
+}
+
+// VectorizeRaw builds the 14-dim vector from a RawRequest (pre-parsed by the fast handler).
+func (v *Vectorizer) VectorizeRaw(req *RawRequest) [VectorDim]float32 {
+	var vec [VectorDim]float32
+
+	// 0: amount
+	vec[0] = clamp(float32(req.TxAmount) / v.c.MaxAmount)
+
+	// 1: installments
+	vec[1] = clamp(float32(req.TxInstallments) / v.c.MaxInstallments)
+
+	// 2: amount_vs_avg
+	if req.CustAvgAmount > 0 {
+		vec[2] = clamp((float32(req.TxAmount) / float32(req.CustAvgAmount)) / v.c.AmountVsAvgRatio)
+	}
+
+	// 3: hour_of_day
+	vec[3] = float32(req.TxTime.Hour()) / 23.0
+
+	// 4: day_of_week (Mon=0..Sun=6)
+	vec[4] = float32((int(req.TxTime.Weekday())+6)%7) / 6.0
+
+	// 5, 6: minutes_since_last_tx and km_from_last_tx — sentinel -1 when no prior tx
+	if !req.HasLastTx {
+		vec[5] = -1
+		vec[6] = -1
+	} else {
+		minutes := req.TxTime.Sub(req.LastTxTime).Minutes()
+		vec[5] = clamp(float32(minutes) / v.c.MaxMinutes)
+		vec[6] = clamp(float32(req.LastKmFromCurrent) / v.c.MaxKm)
+	}
+
+	// 7: km_from_home
+	vec[7] = clamp(float32(req.TermKmFromHome) / v.c.MaxKm)
+
+	// 8: tx_count_24h
+	vec[8] = clamp(float32(req.CustTxCount24h) / v.c.MaxTxCount24h)
+
+	// 9: is_online
+	if req.TermIsOnline {
+		vec[9] = 1
+	}
+
+	// 10: card_present
+	if req.TermCardPresent {
+		vec[10] = 1
+	}
+
+	// 11: unknown_merchant
+	if req.UnknownMerchant {
+		vec[11] = 1
+	}
+
+	// 12: mcc_risk
+	if risk, ok := v.mcc[req.MCC]; ok {
+		vec[12] = risk
+	} else {
+		vec[12] = 0.5
+	}
+
+	// 13: merchant_avg_amount
+	vec[13] = clamp(float32(req.MerchantAvg) / v.c.MaxMerchantAvgAmount)
 
 	return vec
 }
