@@ -1,0 +1,7 @@
+.git
+.claude
+.github
+*.md
+resources/
+nginx/
+docker-compose*.yml
