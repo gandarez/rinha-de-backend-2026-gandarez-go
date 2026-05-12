@@ -1,6 +1,7 @@
 services:
   api1:
     image: ghcr.io/gandarez/rinha-de-backend-2026-gandarez-go:latest
+    platform: linux/amd64
     hostname: api1
     environment:
       PORT: "9999"
@@ -22,6 +23,7 @@ services:
 
   api2:
     image: ghcr.io/gandarez/rinha-de-backend-2026-gandarez-go:latest
+    platform: linux/amd64
     hostname: api2
     environment:
       PORT: "9999"
