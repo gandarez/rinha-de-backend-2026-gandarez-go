@@ -6,7 +6,8 @@ services:
     environment:
       PORT: "9999"
       GOMAXPROCS: "1"
-      GOMEMLIMIT: "140MiB"
+      GOMEMLIMIT: "135MiB"
+      GOGC: "off"
     networks:
       - rinha
     healthcheck:
@@ -28,7 +29,8 @@ services:
     environment:
       PORT: "9999"
       GOMAXPROCS: "1"
-      GOMEMLIMIT: "140MiB"
+      GOMEMLIMIT: "135MiB"
+      GOGC: "off"
     networks:
       - rinha
     healthcheck:

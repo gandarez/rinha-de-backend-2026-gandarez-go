@@ -2,6 +2,6 @@
     "participants": ["Carlos Henrique Guardão Gandarez"],
     "social": ["https://github.com/gandarez/", "https://www.linkedin.com/in/gandarez"],
     "source-code-repo": "https://github.com/gandarez/rinha-de-backend-2026-gandarez-go",
-    "stack": ["go", "nginx"],
+    "stack": ["go", "haproxy"],
     "open_to_work": false
 }
