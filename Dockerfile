@@ -1,4 +1,6 @@
 FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS build
+ARG TARGETOS
+ARG TARGETARCH
 WORKDIR /src
 COPY go.mod ./
 COPY cmd/ ./cmd/
@@ -6,7 +8,7 @@ COPY internal/ ./internal/
 COPY scripts/ ./scripts/
 RUN apk add --no-cache curl bash \
     && bash scripts/download-resources.sh \
-    && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    && CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
        go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api
 
 FROM alpine:3.20
